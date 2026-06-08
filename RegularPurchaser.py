@@ -30,10 +30,24 @@ class RegularPurchaser(InventoryManager):
                 "unit": "단위"
             })
 
+            
+            def convert_unit(row):
+                qty = row["평균구매량"]
+                unit = str(row["단위"]).lower()
+                
+                if unit == 'kg':
+                    return qty * 1000, 'g'
+                elif unit == 'l':
+                    return qty * 1000, 'ml'
+                return qty, unit
+
+            
+            converted = df.apply(convert_unit, axis=1, result_type='expand')
+            df["평균구매량"] = converted[0].round(2)
+            df["단위"] = converted[1]
 
             return df
         
         except Exception as e:
             print(f"조회 실패: {e}")
             return pd.DataFrame()
-
