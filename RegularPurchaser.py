@@ -51,3 +51,20 @@ class RegularPurchaser(InventoryManager):
         except Exception as e:
             print(f"조회 실패: {e}")
             return pd.DataFrame()
+
+def main():
+    rp_analyzer = RegularPurchaser()
+    
+    print("--- 정기 구매 분석을 시작합니다 ---")
+    
+    result = rp_analyzer.get_list()
+    
+    if not result.empty:
+        print(f"\n총 {len(result)}개의 정기 구매 대상 품목이 확인되었습니다.\n")
+        print(result.to_string(index=False))
+    else:
+        print("\n최근 30일 이내에 3회 이상 구매한 품목이 없습니다.")
+
+
+if __name__ == "__main__":
+    main()
