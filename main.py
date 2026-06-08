@@ -43,3 +43,23 @@ def read_inventory():
 def regular_purchase():
     df = rp.get_list()
     return df.to_dict(orient="records") if not df.empty else {"message": "대상 없음"}
+
+@app.post("/generate-shopping-list")
+async def generate_shopping_list(youtube_url: str):
+    
+    text = recipe_extractor.extract_recipe(youtube_url)
+    recipe_data = await recipe_extractor.extract_data(text)
+    
+    
+    inventory_df = inventory_manager.get_inventory()
+    
+    
+    shopping_manager.create_shopping_list(recipe_data, 
+                                          inventory_df, recipe_extractor)
+    
+    return shopping_manager.get_final_list().to_dict(orient="records")
+
+@app.get("/shopping-list")
+def get_shopping_list():
+    
+    return shopping_manager.get_final_list().to_dict(orient="records")
