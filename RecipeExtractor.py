@@ -47,9 +47,50 @@ class RecipeExtractor:
             print(f"[자막] 가져오는 중 오류 발생: {e}")
             return None
 
+    def extract_data(self, text):
+        if not text:
+            return []
+            
+        results = []
+        tokens = self.kiwi.tokenize(text)
+        
+        for i in range(len(tokens)):
+            token = tokens[i]
+            
+            if token.tag == 'NNG':
+                ingredient = token.form
+                
+                cursor = i + 1
+                if cursor < len(tokens) and tokens[cursor].tag.startswith('J'):
+                    cursor += 1
+                
+                if cursor < len(tokens) and tokens[cursor].tag == 'SN':
+                    amount = tokens[cursor].form
+                    unit = ""
+                    
+                    if cursor + 1 < len(tokens) and tokens[cursor+1].tag == 'NNG':
+                        unit = tokens[cursor+1].form
+                    
+                    if ingredient not in ['크기', '정도', '시간', '생각', '사람', '데']:
+                        results.append({"재료": ingredient, "수량": amount, "단위": unit})
+        
+        if results:
+            df = pd.DataFrame(results)
+            df[["수량", "단위"]] = df.apply(self.convert_unit, axis=1)
+            return df.to_dict('records')
+
 if __name__=="__main__":
     extractor = RecipeExtractor()
     url = "https://www.youtube.com/watch?v=Wh8YL-Iz_kI"
     text = extractor.extract_recipe(url)
     print(text)
-    
+    if text:
+        data = extractor.extract_data(text)
+
+        print(("--- 추출된 재료 및 수량 ---"))
+        if not data:
+            print("추출된 재료 데이터가 없습니다.")
+        for item in data:
+            print(f"재료: {item['재료']}, 수량: {item['수량']}, 단위: {item['단위']}")
+    else:
+        print("유튜브 자막을 가져오지 못해 분석을 시작할 수 없습니다.")
