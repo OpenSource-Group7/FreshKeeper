@@ -54,24 +54,3 @@ class IngredientCalculator:
 
         res_df = pd.DataFrame(normalized_rows)
         return res_df.rename(columns={"수량": "필요량" if qty_col == "수량" else "총재고"})
-if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        # 1. 재고 목록 가져오기
-        inventory_df = InventoryManager().get_inventory()
-        
-        # 2. 유튜브 자막으로 레시피 재료 추출
-        extractor = RecipeExtractor()
-        url = "https://www.youtube.com/watch?v=-BYPCJNm5uo"
-        text = extractor.extract_recipe(url)
-        recipe_data = await extractor.extract_data(text)
-        
-        # 3. 부족 재료 계산
-        calculator = IngredientCalculator()
-        result = calculator.calculate_missing_ingredients(recipe_data, inventory_df, extractor)
-        
-        print("\n=== 사야 할 재료 목록 ===")
-        print(result.to_string(index=False) if not result.empty else "재료 충분")
-
-    asyncio.run(main())
