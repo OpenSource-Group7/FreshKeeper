@@ -55,3 +55,19 @@ class InventoryManager:
         except Exception as e:
             print(f"에러 발생: {e}")
             return None
+
+def main():
+    manager = InventoryManager()
+    print("--- 재고 요약 데이터를 불러오는 중 ---")
+    summary_df = manager.get_inventory()
+    if summary_df is not None:
+        if not summary_df.empty:
+            print(f"성공! 총 {len(summary_df)}개의 재료 항목이 확인되었습니다\n")
+            print(summary_df.to_string(index=False))
+        else:
+            print("\n데이터베이스에 조회할 유통기한 내 자료가 없습니다.")
+    else:
+        print("\n데이터를 불러오는 데 실패했습니다. DB연결 및 쿼리를 다시 확인하세요")
+
+if __name__ == "__main__":
+    main()
