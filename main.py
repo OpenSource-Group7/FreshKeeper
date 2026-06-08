@@ -63,3 +63,24 @@ async def generate_shopping_list(youtube_url: str):
 def get_shopping_list():
     
     return shopping_manager.get_final_list().to_dict(orient="records")
+
+
+@app.post("/shopping-list/add")
+def add_to_shopping_list(item: RecipeItem):
+    
+    shopping_manager.add_item(item.재료, item.수량, item.단위)
+    return {"message": "추가 완료"}
+
+
+@app.put("/shopping-list/{item_name}")
+def update_shopping_item(item_name: str, new_quantity: float):
+    
+    shopping_manager.update_item_quantity(item_name, new_quantity)
+    return {"message": f"{item_name} 수정 완료"}
+
+
+@app.delete("/shopping-list/{item_name}")
+def delete_shopping_item(item_name: str):
+    
+    shopping_manager.remove_item(item_name)
+    return {"message": f"{item_name} 삭제 완료"}
