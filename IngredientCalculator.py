@@ -13,13 +13,6 @@ class IngredientCalculator:
         
         return comparison[comparison["구매필요량"] > 0][["재료명", "구매필요량", "단위"]]
 
-    def get_from_recipe(self, youtube_url):
-        extractor = RecipeExtractor()
-        raw_text = extractor.extract_recipe(youtube_url)
-        recipe_data = extractor.extract_data(raw_text)
-        recipe_df = pd.DataFrame(recipe_data).rename(columns={"재료": "재료명", "수량": "필요량"})
-        return self.calculate_missing_ingredients(recipe_df)
-
 def test_calculate_missing_ingredients():
     extractor = RecipeExtractor()
     recipe_data = [
