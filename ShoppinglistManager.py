@@ -134,3 +134,60 @@ class ShoppingListManager:
         else:
             print(final_df.to_string(index=False))
         print("=" * 45)
+
+
+#  [전체 연동 테스트 구역]
+
+if __name__ == "__main__":
+    import asyncio  
+    
+    from RecipeExtractor import RecipeExtractor
+    from InventoryManager import InventoryManager
+
+    async def test_run():
+        print("====================================================")
+        print(" 실제 부품 연동 파이프라인 테스트 시작 (ShoppingListManager 중심)")
+        print("====================================================")
+
+        extractor = RecipeExtractor()
+        inventory_manager = InventoryManager()
+        shopping_manager = ShoppingListManager()  
+
+        print("구동 단계 0. 기초 데이터 로딩 중...")
+        await extractor.load_whitelist()
+
+        url = "https://www.youtube.com/watch?v=-BYPCJNm5uo"
+        print(f"\n구동 단계 1. 유튜브 자막 추출 및 데이터 수령 중... (URL: {url})")
+        text = extractor.extract_recipe(url)
+        
+        recipe_list = []
+        if text:
+            recipe_list = await extractor.extract_data(text)
+            print(f" 레시피 리스트 수령 성공 ({len(recipe_list)}개 품목)")
+        else:
+            print(" 외부 자막 파싱 불가 상태이므로 연동 테스트용 데이터를 인입합니다.")
+            recipe_list = [
+                {"재료": "소고기", "수량": "1.5", "단위": "kg"},
+                {"재료": "양파", "수량": "3", "단위": "개"},
+                {"재료": "간장", "수량": "300", "단위": "ml"},
+                {"재료": "두부", "수량": "2", "단위": "모"}
+            ]
+
+        inventory_df = inventory_manager.get_inventory()
+        print(f" 냉장고 실재고 데이터 수령 완료 ({len(inventory_df)}개 품목)")
+
+        print(f"\n매니저 내부에서 계산기/정기구매 파이프라인을 작동시킵니다...")
+        shopping_manager.create_shopping_list(recipe_list, inventory_df, extractor)
+        
+        shopping_manager.print_list()
+
+        print(f"\n사용자 직접 제어 기능(CRUD) 시뮬레이션...")
+        shopping_manager.add_item("사과", 450.0, "g")
+        shopping_manager.update_item_quantity("간장", 3.0)
+        shopping_manager.remove_item("양파")
+
+        print(f"\n 실제 데이터 연동 및 수동 편집이 끝난 [최종 쇼핑 리스트]")
+        shopping_manager.print_list()
+
+    # 비동기 루프 구동
+    asyncio.run(test_run())
