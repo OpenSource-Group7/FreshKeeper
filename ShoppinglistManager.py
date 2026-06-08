@@ -86,6 +86,30 @@ class ShoppingListManager:
         else:
             self.shopping_list[name] = {"수량": qty, "단위": unit}
 
+    #사용자 제어 기능
+
+    def add_item(self, name: str, qty: float, unit: str = "") -> None:
+        qty, unit = convert_to_mart_unit(name, qty, unit)
+        self._add_to_internal_list(name, qty, unit)
+        print(f"[수동 추가] {name} {qty} {unit}")
+
+    def remove_item(self, name: str) -> None:
+        if name in self.shopping_list:
+            del self.shopping_list[name]
+            print(f"[수동 삭제] '{name}' 항목 제거 완료")
+        else:
+            print(f"[삭제 실패] '{name}' 항목이 리스트에 없습니다.")
+
+    def update_item_quantity(self, name: str, new_qty: float) -> None:
+        if name in self.shopping_list:
+            old_qty = self.shopping_list[name]["수량"]
+            self.shopping_list[name]["수량"] = new_qty
+            print(f"[수동 수정] {name}: {old_qty} -> {new_qty} ({self.shopping_list[name]['단위']})")
+        else:
+            print(f"[수정 실패] '{name}' 항목이 리스트에 없습니다.")
+
+    #출력 및 반환
+
     def get_final_list(self) -> pd.DataFrame:
         if not self.shopping_list:
             return pd.DataFrame(columns=["재료명", "최종수량", "단위"])
