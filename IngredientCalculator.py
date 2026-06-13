@@ -11,22 +11,28 @@ class IngredientCalculator:
         "계란": 60, "달걀": 60, "대파": 300, "파": 300, "쪽파": 200, "마늘": 50, "고추": 20, "두부": 300
     }
 
+    SPOON_TO_ML = {
+        "스푼": 15, "큰술": 15, "tbsp": 15,
+        "작은술": 5, "tsp": 5,
+    }
+
+    POWDER_TO_GRAM = {
+        "전분": 8, "밀가루": 8, "설탕": 12, "소금": 6,
+        "고춧가루": 6, "후추": 3, "참깨": 4
+    }
+
     def _match_ingredient_name(self, recipe_name: str, inventory_df: pd.DataFrame) -> str:
-        # 1. 완전 일치
         if recipe_name in inventory_df["재료명"].values:
             return recipe_name
         
-        # 2. 재고명이 레시피명을 포함 ("서울 우유".contains("우유") → True)
         contains = inventory_df[inventory_df["재료명"].str.contains(recipe_name, na=False)]
         if not contains.empty:
             return contains.iloc[0]["재료명"]
         
-        # 3. 레시피명이 재고명을 포함 ("우유" in "서울 우유" → True)
         for inv_name in inventory_df["재료명"]:
             if inv_name in recipe_name:
                 return inv_name
         
-        # 매칭 없으면 원본 반환
         return recipe_name
 
     def calculate_missing_ingredients(
@@ -45,7 +51,6 @@ class IngredientCalculator:
         recipe_final = recipe_normalized.groupby(["재료명", "단위"], as_index=False)["필요량"].sum()
         inventory_final = inventory_normalized.groupby(["재료명", "단위"], as_index=False)["총재고"].sum()
 
-        # merge 전에 레시피 재료명을 재고 재료명에 맞게 매핑
         recipe_final["재료명"] = recipe_final["재료명"].apply(
             lambda x: self._match_ingredient_name(x, inventory_final)
         )
@@ -64,6 +69,14 @@ class IngredientCalculator:
             qty = float(row[qty_col])
             unit = str(row["단위"])
 
+            if unit in self.SPOON_TO_ML:
+                if name in self.POWDER_TO_GRAM:
+                    qty *= self.POWDER_TO_GRAM[name]
+                    unit = "g"
+                else:
+                    qty *= self.SPOON_TO_ML[unit]
+                    unit = "ml"
+
             if name in self.COUNT_TO_GRAM and unit in ["개", "대", "단", "통", "모"]:
                 qty *= self.COUNT_TO_GRAM[name]
                 unit = "g"
@@ -77,3 +90,48 @@ class IngredientCalculator:
 
         res_df = pd.DataFrame(normalized_rows)
         return res_df.rename(columns={"수량": "필요량" if qty_col == "수량" else "총재고"})
+
+
+if __name__ == "__main__":
+    async def main():
+        inventory_manager = InventoryManager()
+        extractor = RecipeExtractor()
+        calculator = IngredientCalculator()
+
+        inventory_df = inventory_manager.get_inventory()
+        if inventory_df is None:
+            print("재고 데이터를 불러오지 못했습니다.")
+            return
+
+        print("=== 현재 재고 ===")
+        print(inventory_df.to_string(index=False))
+        print()
+
+        recipe_url = input("레시피 URL을 입력하세요: ").strip()
+        if not recipe_url:
+            print("URL이 입력되지 않았습니다.")
+            return
+
+        transcript = extractor.extract_recipe(recipe_url)
+        if not transcript:
+            print("자막을 추출하지 못했습니다.")
+            return
+
+        recipe_list = await extractor.extract_data(transcript)
+        if not recipe_list:
+            print("레시피 재료를 추출하지 못했습니다.")
+            return
+
+        print("=== 추출된 레시피 재료 ===")
+        print(pd.DataFrame(recipe_list).to_string(index=False))
+        print()
+
+        missing_df = calculator.calculate_missing_ingredients(recipe_list, inventory_df, extractor)
+
+        if missing_df.empty:
+            print("모든 재료가 충분합니다!")
+        else:
+            print("=== 구매 필요 재료 ===")
+            print(missing_df.to_string(index=False))
+
+    asyncio.run(main())
