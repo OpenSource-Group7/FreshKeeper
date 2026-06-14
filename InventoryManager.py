@@ -1,14 +1,18 @@
 import pandas as pd
 import psycopg2
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class InventoryManager:
     def __init__(self):
         self.db_params = {
             "host": "ep-nameless-dust-aomikbfl-pooler.c-2.ap-southeast-1.aws.neon.tech",
             "database": "neondb",
-            "user": "neondb_owner",
-            "password": "npg_p4P1LjcSUWGR",
+            "user": os.environ.get("PGUSER"),
+            "password": os.environ.get("PGPASSWORD"),
             "port": "5432",
             "sslmode": "require"
         }
