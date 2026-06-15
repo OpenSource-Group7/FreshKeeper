@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart'; // 👈 추가된 이미지 피커 라이브러리 임포트!
+import 'package:image_picker/image_picker.dart'; // 추가된 이미지 피커 라이브러리 임포트
 import 'dart:convert';
 
 void main() => runApp(const FreshKeeperApp());
@@ -118,7 +118,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _selectedCategory = '전체';
   bool _isLoading = false;
 
-  final ImagePicker _picker = ImagePicker(); // 👈 이미지 선택 객체 생성!
+  final ImagePicker _picker = ImagePicker(); // 이미지 선택 객체 생성!
 
   @override
   void initState() {
@@ -202,7 +202,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Icons.fastfood;
   }
 
-  // ✍️ [핵심 보완] 버튼 눌렀을 때 하단에서 사진 인식 창(카메라/갤러리 선택) 모달을 띄워주는 함수
+  // 버튼 눌렀을 때 하단에서 사진 인식 창(카메라/갤러리 선택) 모달을 띄워주는 함수
   void _showImageSourceSelectionBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -236,7 +236,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // 📸 진짜 사진을 골라서 백엔드 API로 넘기는 코어 비동기 파이프라인
+  // 진짜 사진을 골라서 백엔드 API로 넘기는 코어 비동기 파이프라인
   Future<void> _pickImageAndProcess(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(source: source);
@@ -280,13 +280,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("🎉 네이버 OCR 연동 대성공! 진짜 영수증 속 ${detectedData.length}개의 식재료가 추가되었습니다.")),
+          SnackBar(content: Text("영수증 속 ${detectedData.length}개의 식재료가 추가되었습니다.")),
         );
       } else {
         throw Exception("서버 에러");
       }
     } catch (e) {
-      // 서버 연결이 불가능하면 시뮬레이션용 다이얼로그 팝업 가동 [cite: 158]
+      // 서버 연결이 불가능하면 시뮬레이션용 다이얼로그 팝업 가동
       _showOcrSimulationDialog();
     } finally {
       setState(() {
@@ -439,7 +439,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImageSourceSelectionBottomSheet, // 👈 카메라/갤러리 선택 창 모달을 실행하도록 수정!
+        onPressed: _showImageSourceSelectionBottomSheet, // 카메라/갤러리 선택 창 모달을 실행하도록 수정
         backgroundColor: const Color(0xFF0E6E20),
         elevation: 2,
         icon: const Icon(Icons.document_scanner, color: Colors.white),
@@ -561,7 +561,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     _executeBackendPipeline();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("수동 설정된 날짜 기반 객체가 인메모리 재고 리스트에 반영 및 재정렬되었습니다!")),
+                    const SnackBar(content: Text("수동 설정된 날짜 기반 객체가 인메모리 재고 리스트에 반영 및 재정렬되었습니다")),
                   );
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0E6E20)),
