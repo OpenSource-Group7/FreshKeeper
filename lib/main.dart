@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart'; // 추가된 이미지 피커 라이브러리 임포트
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 
 void main() => runApp(const FreshKeeperApp());
@@ -118,7 +118,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _selectedCategory = '전체';
   bool _isLoading = false;
 
-  final ImagePicker _picker = ImagePicker(); // 이미지 선택 객체 생성!
+  String _realRawReceiptText = "인식된 영수증 데이터가 없습니다.";
+  List<String> _lastDetectedNames = [];
+
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -202,7 +205,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Icons.fastfood;
   }
 
-  // 버튼 눌렀을 때 하단에서 사진 인식 창(카메라/갤러리 선택) 모달을 띄워주는 함수
   void _showImageSourceSelectionBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -218,7 +220,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 title: const Text('갤러리에서 영수증 가져오기'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickImageAndProcess(ImageSource.gallery); // 👈 갤러리 열기
+                  _pickImageAndProcess(ImageSource.gallery);
                 },
               ),
               ListTile(
@@ -226,7 +228,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 title: const Text('카메라로 영수증 촬영하기'),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickImageAndProcess(ImageSource.camera); // 👈 카메라 열기
+                  _pickImageAndProcess(ImageSource.camera);
                 },
               ),
             ],
@@ -236,57 +238,60 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // 진짜 사진을 골라서 백엔드 API로 넘기는 코어 비동기 파이프라인
   Future<void> _pickImageAndProcess(ImageSource source) async {
-    try {
-      final XFile? pickedFile = await _picker.pickImage(source: source);
+    XFile? pickedFile;
 
-      if (pickedFile == null) return; // 사용자가 취소했을 경우 리턴
+    try {
+      pickedFile = await _picker.pickImage(source: source);
+
+      if (pickedFile == null) return;
 
       setState(() {
         _isLoading = true;
       });
 
-      // 자바 스프링 부트 백엔드 통신 서버 엔드포인트
       final url = Uri.parse('http://10.0.2.2:8080/api/ingredients/ocr-scan');
 
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"imagePath": pickedFile.name}), // 👈 사용자가 진짜 고른 사진 파일명을 전송!
+        body: jsonEncode({"imagePath": pickedFile.name}),
       );
 
       if (response.statusCode == 200) {
-        List<dynamic> detectedData = jsonDecode(utf8.decode(response.bodyBytes));
+        final dynamic responseData = jsonDecode(utf8.decode(response.bodyBytes));
 
         setState(() {
-          int currentId = 70;
-          for (String itemName in detectedData) {
-            _rawDatabaseItems.add(
-              Ingredient(
-                id: currentId++,
-                name: itemName,
-                expiryDate: DateTime(2026, 05, 28),
-                useByDate: DateTime(2026, 05, 28),
-                quantity: 1,
-                unit: itemName.contains('우유') ? 'ml' : '개',
-                category: '냉장',
-                status: 'NORMAL',
-                progress: 0.5,
-              ),
-            );
+          if (responseData is Map) {
+            _realRawReceiptText = responseData['rawText'] ?? "추출된 영수증 텍스트 본문이 비어있습니다.";
+            _lastDetectedNames = List<String>.from(responseData['detectedItems'] ?? []);
+          } else if (responseData is List) {
+            _realRawReceiptText = "스캔 완료 파일명: ${pickedFile!.name}\n\n[백엔드 최종 인식 품목]\n${responseData.join(', ')}";
+            _lastDetectedNames = List<String>.from(responseData);
           }
-          _executeBackendPipeline();
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("영수증 속 ${detectedData.length}개의 식재료가 추가되었습니다.")),
-        );
+        _showOcrSimulationDialog();
+
       } else {
-        throw Exception("서버 에러");
+        throw Exception("서버 에러 응답 발생 (Status Code: ${response.statusCode})");
       }
     } catch (e) {
-      // 서버 연결이 불가능하면 시뮬레이션용 다이얼로그 팝업 가동
+      setState(() {
+        final String fileName = pickedFile != null ? pickedFile.name : "알 수 없는 파일";
+
+        _realRawReceiptText = "[백엔드 스프링부트 서버 연결 실패]\n\n"
+            "이클립스 자바 백엔드 서버가 구동 중인지 확인해 주세요!\n"
+            "방금 가상 카메라로 촬영한 리얼 정보는 다음과 같습니다.\n\n"
+            "• 촬영한 파일명: $fileName\n"
+            "• 에러 로그 상세 정보: $e";
+
+        _lastDetectedNames = [];
+        if (fileName.contains('receipt') || fileName.contains('png') || fileName.contains('jpg')) {
+          _lastDetectedNames.add('신선우유');
+        }
+      });
+
       _showOcrSimulationDialog();
     } finally {
       setState(() {
@@ -439,7 +444,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImageSourceSelectionBottomSheet, // 카메라/갤러리 선택 창 모달을 실행하도록 수정
+        onPressed: _showImageSourceSelectionBottomSheet,
         backgroundColor: const Color(0xFF0E6E20),
         elevation: 2,
         icon: const Icon(Icons.document_scanner, color: Colors.white),
@@ -489,11 +494,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     padding: const EdgeInsets.all(8),
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     color: const Color(0xFFF3F4F5),
-                    child: const Text("[이마트 용인점] 031-123-4567\n01 신선우유(900ml) 3,200원\n과세물품 합계: 3,200원", style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Color(0xFF191C1D))),
+                    child: Text(
+                      _realRawReceiptText,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Color(0xFF191C1D)),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   const Text("[2] 백엔드 Regex 품목명 정제 결과", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0E6E20), fontSize: 13)),
-                  const Text("• 품목명 추출 완료 -> 신선우유\n• 금액 및 마트 정보 필터링 완료", style: TextStyle(fontSize: 12, color: Color(0xFF40493D))),
+                  Text(
+                    _lastDetectedNames.isEmpty
+                        ? "• 서버에서 필터링 완료된 식재료 품목이 없습니다."
+                        : _lastDetectedNames.map((name) => "• 품목명 추출 완료 -> $name").join('\n'),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF40493D)),
+                  ),
                   const SizedBox(height: 12),
                   const Text("[3] 유통기한 수동 입력", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 13)),
                   const SizedBox(height: 6),
@@ -529,7 +542,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     color: const Color(0xFFFFDCBE).withOpacity(0.3),
                     child: Text(
-                      "IngredientRequestDto {\n  품목명: '신선우유',\n  유저입력날짜: '${selectedUserDate.year}-${selectedUserDate.month.toString().padLeft(2, '0')}-${selectedUserDate.day.toString().padLeft(2, '0')}'\n}",
+                      "IngredientRequestDto {\n  품목명: '${_lastDetectedNames.isNotEmpty ? _lastDetectedNames.first : '없음'}',\n  유저입력날짜: '${selectedUserDate.year}-${selectedUserDate.month.toString().padLeft(2, '0')}-${selectedUserDate.day.toString().padLeft(2, '0')}'\n}",
                       style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Color(0xFF542E00)),
                     ),
                   ),
@@ -545,23 +558,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 onPressed: () {
                   Navigator.pop(context);
                   setState(() {
-                    _rawDatabaseItems.add(
-                      Ingredient(
-                        id: 65,
-                        name: '신선우유',
-                        expiryDate: selectedUserDate,
-                        useByDate: selectedUserDate,
-                        quantity: 900,
-                        unit: 'ml',
-                        category: '냉장',
-                        status: 'NORMAL',
-                        progress: 0.5,
-                      ),
-                    );
+                    int currentId = 80;
+                    for (String itemName in _lastDetectedNames) {
+                      _rawDatabaseItems.add(
+                        Ingredient(
+                          id: currentId++,
+                          name: itemName,
+                          expiryDate: selectedUserDate,
+                          useByDate: selectedUserDate,
+                          quantity: itemName.contains('우유') ? 900 : 1,
+                          unit: itemName.contains('우유') ? 'ml' : '개',
+                          category: '냉장',
+                          status: 'NORMAL',
+                          progress: 0.5,
+                        ),
+                      );
+                    }
                     _executeBackendPipeline();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("수동 설정된 날짜 기반 객체가 인메모리 재고 리스트에 반영 및 재정렬되었습니다")),
+                    SnackBar(content: Text("${_lastDetectedNames.length}개의 식재료가 실제 재고 목록에 동적 바인딩되었습니다.")),
                   );
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0E6E20)),
