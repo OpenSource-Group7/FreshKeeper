@@ -125,7 +125,7 @@ public class ClovaOcrService {
                 for (int i = 0; i < fields.length(); i++) {
                     String inferText = fields.getJSONObject(i).getString("inferText").trim();
                     
-                    // 1. 숫자가 포함된 텍스트는 단가/금액/사업자번호이므로 제외!
+                    // 1. 숫자가 포함된 텍스트는 단가/금액/사업자번호이므로 제외
                     if (inferText.matches(".*\\d.*")) {
                         continue;
                     }
@@ -135,7 +135,7 @@ public class ClovaOcrService {
                         continue;
                     }
 
-                    // 3. 결제 관련 노이즈 단어가 포함되어 있다면 제외!
+                    // 3. 결제 관련 노이즈 단어가 포함되어 있다면 제외
                     boolean isNoise = false;
                     for (String noise : noiseWords) {
                         if (inferText.contains(noise)) {
@@ -144,7 +144,7 @@ public class ClovaOcrService {
                         }
                     }
 
-                    // 4. 모든 필터를 무사히 통과한 진짜 식재료/음식 품목만 추가!
+                    // 4. 모든 필터를 무사히 통과한 진짜 식재료/음식 품목만 추가
                     if (!isNoise) {
                         ingredientNames.add(inferText);
                     }
