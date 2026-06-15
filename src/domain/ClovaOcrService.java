@@ -7,6 +7,9 @@ import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -15,13 +18,18 @@ import org.json.JSONObject;
 
 public class ClovaOcrService {
 
-    // 네이버 클로바 OCR API 정보 (가은이의 고유 키셋)
+    // 네이버 클로바 OCR API 정보
     private final String apiURL = "https://i6bnj5nnu2.apigw.ntruss.com/custom/v1/54183/a33b6327cf6ca2e4797577cefcda5aae35bc67ed11072e03630b8e6c1f16323e/general";
     private final String secretKey = "RXV1cFdVZmlLWGlyZmFOZ2FNall2V3NhQ1lnV3htWlY=";
 
+    // 다경이가 공유해 준 Neon PostgreSQL 클라우드 DB 연결 정보
+    private final String dbUrl = "jdbc:postgresql://ep-nameless-dust-aomikbfl-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
+    private final String dbUser = "neondb_owner";
+    private final String dbPassword = "npg_YC6gH8NinfZM"; 
+
     public List<String> extractIngredientsFromReceipt(String imagePath) {
         List<String> ingredientNames = new ArrayList<>();
-        String boundary = "---" + UUID.randomUUID().toString(); // Multipart/form-data 전송용 고유 바운더리
+        String boundary = "---" + UUID.randomUUID().toString();
 
         try {
             URL url = new URL(apiURL);
@@ -31,11 +39,9 @@ public class ClovaOcrService {
             con.setDoInput(true);
             con.setRequestMethod("POST");
             
-            // 네이버 OCR 규격에 맞게 멀티파트 헤더 세팅
             con.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             con.setRequestProperty("X-OCR-SECRET", secretKey);
 
-            // 1. 네이버가 요구하는 메타데이터 JSON 데이터 만들기
             JSONObject json = new JSONObject();
             json.put("version", "V2");
             json.put("requestId", UUID.randomUUID().toString());
@@ -43,7 +49,7 @@ public class ClovaOcrService {
             
             JSONObject image = new JSONObject();
             String format = imagePath.substring(imagePath.lastIndexOf(".") + 1).toLowerCase();
-            if (format.equals("jpg")) format = "jpeg"; // jpg 확장자는 jpeg로 매핑
+            if (format.equals("jpg")) format = "jpeg";
             
             image.put("format", format); 
             image.put("name", "receipt_image");
@@ -54,19 +60,16 @@ public class ClovaOcrService {
             
             String message = json.toString();
 
-            // 2. 진짜 파일과 JSON 데이터를 바운더리로 나누어 전송 (Multipart)
             DataOutputStream wr = new DataOutputStream(con.getOutputStream());
             
-            // [파트 1: 메타데이터 JSON 영역]
             wr.writeBytes("--" + boundary + "\r\n");
             wr.writeBytes("Content-Disposition: form-data; name=\"message\"\r\n\r\n");
             wr.write(message.getBytes("UTF-8"));
             wr.writeBytes("\r\n");
 
-            // [파트 2: 진짜 이미지 파일 영역]
             File file = new File(imagePath);
             if (!file.exists()) {
-                System.out.println("⚠️ 에러: 지정된 경로에 영수증 파일이 없습니다! 경로를 확인해 주세요: " + imagePath);
+                System.out.println("⚠️ 에러: 지정된 경로에 영수증 파일이 없습니다!: " + imagePath);
                 wr.close();
                 return ingredientNames;
             }
@@ -75,7 +78,6 @@ public class ClovaOcrService {
             wr.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"" + file.getName() + "\"\r\n");
             wr.writeBytes("Content-Type: application/octet-stream\r\n\r\n");
 
-            // 이미지 바이트 데이터 스트림 전송
             FileInputStream fis = new FileInputStream(file);
             byte[] buffer = new byte[4096];
             int bytesRead;
@@ -85,11 +87,10 @@ public class ClovaOcrService {
             fis.close();
             
             wr.writeBytes("\r\n");
-            wr.writeBytes("--" + boundary + "--\r\n"); // 멀티파트 데이터 종료 닫기
+            wr.writeBytes("--" + boundary + "--\r\n");
             wr.flush();
             wr.close();
 
-            // 3. 네이버 서버로부터 응답 받기
             int responseCode = con.getResponseCode();
             BufferedReader br;
             if (responseCode == 200) {
@@ -105,36 +106,53 @@ public class ClovaOcrService {
             }
             br.close();
 
-            // 4. OCR 결과 JSON에서 식재료 단어만 필터링 파싱
             JSONObject jsonResponse = new JSONObject(response.toString());
             
-            // 에러 응답 분기 처리
             if (!jsonResponse.has("images")) {
-                System.out.println("❌ 네이버 OCR 반환 에러 메시지: " + response.toString());
+                System.out.println(" 네이버 OCR 반환 에러 메시지: " + response.toString());
                 return ingredientNames;
             }
 
-            // 🛒 FreshKeeper 식재료 매칭 사전 리스트 (마트 정보, 결제 문구 컷팅용 필터)
-            List<String> allowedIngredients = List.of(
-                "우유", "달걀", "계란", "삼겹살", "두부", "콩나물", "대파", 
-                "소고기", "돼지고기", "닭고기", "양파", "당근", "마늘", "고추", "상추", "깻잎"
+            // 마트 정보, 결제용 노이즈 텍스트 차단 리스트
+            List<String> noiseWords = List.of(
+                "과세", "면세", "합계", "금액", "부가세", "포인트", "할인", "결제", 
+                "카드", "현금", "수량", "단가", "이마트", "홈플러스", "롯데마트", "매장"
             );
 
             JSONArray imagesArray = jsonResponse.getJSONArray("images");
             if (imagesArray.length() > 0) {
                 JSONArray fields = imagesArray.getJSONObject(0).getJSONArray("fields");
                 for (int i = 0; i < fields.length(); i++) {
-                    String inferText = fields.getJSONObject(i).getString("inferText");
+                    String inferText = fields.getJSONObject(i).getString("inferText").trim();
                     
-                    // 1차 필터: 2글자 이상의 순수 한글만 통과
-                    if (inferText.matches("^[가-힣]+$") && inferText.length() >= 2) { 
-                        
-                        // 2차 필터: ⭐ 지정한 진짜 식재료 사전에 들어있는 단어인지 검증
-                        if (allowedIngredients.contains(inferText)) {
-                            ingredientNames.add(inferText);
+                    // 1. 숫자가 포함된 텍스트는 단가/금액/사업자번호이므로 제외!
+                    if (inferText.matches(".*\\d.*")) {
+                        continue;
+                    }
+
+                    // 2. 특수문자나 단독 영문자 노이즈 제거
+                    if (inferText.matches("^[\\W_]+$") || inferText.length() < 2) {
+                        continue;
+                    }
+
+                    // 3. 결제 관련 노이즈 단어가 포함되어 있다면 제외!
+                    boolean isNoise = false;
+                    for (String noise : noiseWords) {
+                        if (inferText.contains(noise)) {
+                            isNoise = true;
+                            break;
                         }
                     }
+
+                    // 4. 모든 필터를 무사히 통과한 진짜 식재료/음식 품목만 추가!
+                    if (!isNoise) {
+                        ingredientNames.add(inferText);
+                    }
                 }
+            }
+
+            if (!ingredientNames.isEmpty()) {
+                saveIngredientsToNeonDatabase(ingredientNames);
             }
 
         } catch (Exception e) {
@@ -143,5 +161,33 @@ public class ClovaOcrService {
         }
 
         return ingredientNames;
+    }
+
+    // JDBC를 사용하여 Neon DB에 데이터를 적재하는 프라이빗 헬퍼 함수
+    private void saveIngredientsToNeonDatabase(List<String> ingredients) {
+        String sql = "INSERT INTO ingredients (name, category, qty, reg_date) VALUES (?, '냉장', 1, CURRENT_DATE)";
+        
+        try {
+            Class.forName("org.postgresql.Driver");
+            
+            try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                
+                for (String name : ingredients) {
+                    pstmt.setString(1, name);
+                    pstmt.addBatch();
+                }
+                
+                int[] count = pstmt.executeBatch();
+                System.out.println("성공적으로 " + count.length + "개의 식재료 데이터를 클라우드에 영구 저장했습니다");
+                
+            }
+        } catch (ClassNotFoundException e) {
+            System.out.println("에러: PostgreSQL JDBC 드라이버를 찾을 수 없습니다. 빌드 패스를 확인해 주세요.");
+            e.printStackTrace();
+        } catch (Exception e) {
+            System.out.println("Neon DB 데이터 저장 중 에러 발생: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }
