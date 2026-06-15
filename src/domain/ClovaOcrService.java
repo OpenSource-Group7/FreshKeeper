@@ -69,7 +69,7 @@ public class ClovaOcrService {
 
             File file = new File(imagePath);
             if (!file.exists()) {
-                System.out.println("⚠️ 에러: 지정된 경로에 영수증 파일이 없습니다!: " + imagePath);
+                System.out.println("에러: 지정된 경로에 영수증 파일이 없습니다!: " + imagePath);
                 wr.close();
                 return ingredientNames;
             }
