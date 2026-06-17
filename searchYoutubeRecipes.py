@@ -51,7 +51,7 @@ def recommend_dishes_from_refrigerator(user_id: int, db: Session) -> list[dict]:
         # 2. 하나라도 매칭된 재료가 있다면 매칭률 계산
         if matched:
             match_rate = len(matched) / len(recipe_ingredients)
-            
+
             recommendations.append({
                 "dish": recipe.dish,
                 "match_rate": min(match_rate, 1.0), 
@@ -59,7 +59,10 @@ def recommend_dishes_from_refrigerator(user_id: int, db: Session) -> list[dict]:
             })
             
     recommendations.sort(key=lambda x: x["match_rate"], reverse=True)
-    return recommendations[:3]
+    return {
+        "recommendations": recommendations[:3],
+        "my_ingredients": user_ingredients
+    }
 
 
 # 유튜브 레시피 검색 메인
