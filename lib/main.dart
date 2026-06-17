@@ -335,7 +335,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
       }
     } catch (e) {
       setState(() {
-        final String fileName = pickedFile != null ? pickedFile.name : "알 수 없는 파일";
         _realRawReceiptText = "[백엔드 스프링부트 서버 연결 실패]\n\n이클립스 자바 백엔드 서버 구동을 확인해 주세요!";
         _lastDetectedNames = ['우유', '양파', '대파'];
       });
@@ -349,14 +348,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   void _showOcrSimulationDialog() {
-    // 1. 각 품목 이름 제어용 컨트롤러 리스트
     List<TextEditingController> controllers = _lastDetectedNames
         .map((name) => TextEditingController(text: name))
         .toList();
 
     List<DateTime> itemDates = List<DateTime>.generate(
       _lastDetectedNames.length,
-          (_) => DateTime.now(), // 초기값은 전부 오늘 날짜로 세팅
+          (_) => DateTime.now(),
+    );
+
+    List<String> itemCategories = List<String>.generate(
+      _lastDetectedNames.length,
+          (_) => '냉장',
     );
 
     showDialog(
@@ -367,11 +370,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             backgroundColor: const Color(0xFFFFFFFF),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.receipt_long, color: Color(0xFF0E6E20)),
-                SizedBox(width: 10),
-                Text("스캔 품목별 정보 확인", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF191C1D))),
+                Icon(_lastDetectedNames.first.isEmpty ? Icons.edit_note : Icons.receipt_long, color: const Color(0xFF0E6E20)),
+                const SizedBox(width: 10),
+                Text(_lastDetectedNames.first.isEmpty ? "식재료 직접 추가" : "스캔 품목별 정보 확인", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF191C1D))),
               ],
             ),
             content: SizedBox(
@@ -381,13 +384,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "각 식재료의 이름과 알맞은 유통기한을 각각 설정해 주세요.",
-                      style: TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
+                    Text(
+                      _lastDetectedNames.first.isEmpty
+                          ? "보관할 식재료의 이름, 유통기한, 보관 장소를 설정해 주세요."
+                          : "식재료의 상세 정보를 확인해 주세요. 기본 보관 장소는 '냉장'이며, 필요에 따라 변경이 가능합니다.",
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
                     ),
                     const SizedBox(height: 16),
 
-                    // 3. 리스트 뷰를 통해 아이템별로 입력칸 + 각자 달력 버튼 배치 구조 구현
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -405,14 +409,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                "품목 [${i + 1}]",
+                                "식재료 정보 [${i + 1}]",
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0E6E20)),
                               ),
                               const SizedBox(height: 6),
-                              // 이름 수정 텍스트창
                               TextField(
                                 controller: controllers[i],
                                 decoration: InputDecoration(
+                                  hintText: "식재료 이름을 입력해 주세요",
+                                  hintStyle: const TextStyle(color: Color(0xFF9EA49A), fontSize: 13),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   filled: true,
                                   fillColor: const Color(0xFFFFFFFF),
@@ -427,13 +432,44 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 ),
                                 style: const TextStyle(fontSize: 14, color: Color(0xFF191C1D)),
                               ),
+                              const SizedBox(height: 12),
+
+                              const Text(
+                                "보관 장소 선택",
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF707A6C)),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: ['냉장', '냉동', '실온'].map((type) {
+                                  final isSel = itemCategories[i] == type;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                      label: Text(type, style: TextStyle(fontSize: 12, color: isSel ? Colors.white : const Color(0xFF191C1D))),
+                                      selected: isSel,
+                                      selectedColor: const Color(0xFF0E6E20),
+                                      backgroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      onSelected: (bool selected) {
+                                        if (selected) {
+                                          setDialogState(() {
+                                            itemCategories[i] = type;
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
                               const SizedBox(height: 10),
 
                               InkWell(
                                 onTap: () async {
                                   final DateTime? picked = await showDatePicker(
                                     context: context,
-                                    initialDate: itemDates[i], // 해당 순번 품목의 기존 지정 날짜 로딩
+                                    initialDate: itemDates[i],
                                     firstDate: DateTime(2026, 01, 01),
                                     lastDate: DateTime(2027, 12, 31),
                                   );
@@ -491,11 +527,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           Ingredient(
                             id: tempId++,
                             name: name,
-                            expiryDate: itemDates[i], // 개별 지정 유통기한 삽입
+                            expiryDate: itemDates[i],
                             useByDate: itemDates[i],
                             quantity: name.contains('우유') ? 900 : 1,
                             unit: name.contains('우유') ? 'ml' : '개',
-                            category: name.contains('당근') || name.contains('양파') || name.contains('대파') ? '실온' : '냉장',
+                            category: itemCategories[i],
                             status: 'NORMAL',
                             progress: 0.6,
                           ),
@@ -507,7 +543,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${finalSavedNames.length}개의 식재료가 각기 다른 유통기한으로 냉장고에 등록되었습니다! 🥦✨")),
+                    SnackBar(content: Text("${finalSavedNames.length}개의 식재료가 지정한 보관 장소에 저장되었습니다! 🥦✨")),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -748,12 +784,37 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImageSourceSelectionBottomSheet,
-        backgroundColor: const Color(0xFF0E6E20),
-        elevation: 2,
-        icon: const Icon(Icons.document_scanner, color: Colors.white),
-        label: const Text("영수증 OCR 스캔", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            FloatingActionButton.extended(
+              onPressed: () {
+                setState(() {
+                  _lastDetectedNames = [''];
+                });
+                _showOcrSimulationDialog();
+              },
+              backgroundColor: const Color(0xFFFFFFFF),
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFF0E6E20), width: 1.5),
+              ),
+              icon: const Icon(Icons.edit, color: Color(0xFF0E6E20)),
+              label: const Text("직접 추가", style: TextStyle(color: Color(0xFF0E6E20), fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 12),
+            FloatingActionButton.extended(
+              onPressed: _showImageSourceSelectionBottomSheet,
+              backgroundColor: const Color(0xFF0E6E20),
+              elevation: 2,
+              icon: const Icon(Icons.document_scanner, color: Colors.white),
+              label: const Text("영수증 스캔", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -773,8 +834,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
         selectedColor: const Color(0xFF0E6E20),
         backgroundColor: const Color(0xFFFFFFFF),
         labelStyle: TextStyle(color: isSelected ? Colors.white : const Color(0xFF191C1D), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 13),
-        side: BorderSide(color: isSelected ? Colors.transparent : const Color(0xFFE1E3E4)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
       ),
     );
   }
