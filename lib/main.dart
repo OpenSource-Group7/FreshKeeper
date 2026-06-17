@@ -163,7 +163,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       print("네온 DB 데이터 연동 실패 로그: $e");
       setState(() {
         _rawDatabaseItems = [
-          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 1, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
+          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 5, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
         ];
         _executeBackendPipeline();
       });
@@ -171,6 +171,22 @@ class _InventoryScreenState extends State<InventoryScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<bool> deleteIngredientFromBackend(int id) async {
+    try {
+      final url = Uri.parse('http://10.0.2.2:8080/api/ingredients/$id');
+      final response = await http.delete(url);
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print("네온 DB에서 식재료 ID $id 삭제 완료");
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print("서버 오프라인 상태 - 로컬 메모리 삭제 모드로 가동: $e");
+      return true;
     }
   }
 
@@ -384,97 +400,170 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     final remainingDays = item.useByDate.difference(_currentDate).inDays;
                     final statusColor = _getStatusColor(item.status);
 
-                    return Card(
-                      color: const Color(0xFFFFFFFF),
-                      elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: Color(0xFFE1E3E4), width: 1),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F5),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    _getIngredientIcon(item.name),
-                                    color: statusColor.withOpacity(0.7),
-                                    size: 30,
-                                  ),
+                    return Dismissible(
+                      key: Key(item.id.toString()),
+                      direction: DismissDirection.endToStart,
+                      confirmDismiss: (direction) async {
+                        return await showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              title: const Text("식재료 소진 확인", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              content: Text("'${item.name}'을(를) 냉장고에서 완전히 삭제하시겠습니까?"),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text("취소", style: TextStyle(color: Color(0xFF707A6C))),
                                 ),
-                                const SizedBox(width: 16),
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: const Text("삭제", style: TextStyle(color: Color(0xFFBA1A1A), fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      onDismissed: (direction) async {
+                        final int originalIndex = _rawDatabaseItems.indexOf(item);
+                        final Ingredient deletedItem = item;
 
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            item.name,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF191C1D)),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: statusColor.withOpacity(0.15),
-                                              borderRadius: BorderRadius.circular(20),
+                        setState(() {
+                          _rawDatabaseItems.removeWhere((element) => element.id == item.id);
+                          _processedDisplayItems.removeWhere((element) => element.id == item.id);
+                        });
+
+                        if (item.id != null) {
+                          await deleteIngredientFromBackend(item.id!);
+                        }
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("'${deletedItem.name}' 소진 완료!"),
+                            action: SnackBarAction(
+                              label: "삭제 취소",
+                              textColor: const Color(0xFF5CB35C),
+                              onPressed: () {
+                                setState(() {
+                                  _rawDatabaseItems.insert(originalIndex, deletedItem);
+                                  _executeBackendPipeline();
+                                });
+                              },
+                            ),
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      },
+                      background: Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFBA1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.centerRight,
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text("삭제", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            SizedBox(width: 8),
+                            Icon(Icons.delete_forever, color: Colors.white),
+                          ],
+                        ),
+                      ),
+                      child: Card(
+                        color: const Color(0xFFFFFFFF),
+                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Color(0xFFE1E3E4), width: 1),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF3F4F5),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      _getIngredientIcon(item.name),
+                                      color: statusColor.withOpacity(0.7),
+                                      size: 30,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              item.name,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF191C1D)),
                                             ),
-                                            child: Text(
-                                              remainingDays >= 0 ? 'D-$remainingDays' : 'D+${remainingDays.abs()}',
-                                              style: TextStyle(
-                                                color: statusColor,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: statusColor.withOpacity(0.15),
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Text(
+                                                remainingDays >= 0 ? 'D-$remainingDays' : 'D+${remainingDays.abs()}',
+                                                style: TextStyle(
+                                                  color: statusColor,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity}${item.unit} 남음',
-                                        style: const TextStyle(color: Color(0xFF707A6C), fontSize: 14, fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity}${item.unit} 남음',
+                                          style: const TextStyle(color: Color(0xFF707A6C), fontSize: 14, fontWeight: FontWeight.w500),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '${item.useByDate.year}.${item.useByDate.month.toString().padLeft(2, '0')}.${item.useByDate.day.toString().padLeft(2, '0')}',
-                                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: item.progress,
-                                minHeight: 6,
-                                backgroundColor: const Color(0xFFEDEEEF),
-                                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                                ],
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 16),
+
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '${item.useByDate.year}.${item.useByDate.month.toString().padLeft(2, '0')}.${item.useByDate.day.toString().padLeft(2, '0')}',
+                                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: item.progress,
+                                  minHeight: 6,
+                                  backgroundColor: const Color(0xFFEDEEEF),
+                                  valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -517,9 +606,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   void _showOcrSimulationDialog() {
-    DateTime selectedUserDate = DateTime.now(); 
+    DateTime selectedUserDate = DateTime.now();
 
-    // 유공기한 파싱 데이터 기반 초깃값 세팅 및 사용자 수동 수정을 위한 텍스트 창 변수
     String initialName = _lastDetectedNames.isNotEmpty ? _lastDetectedNames.first : '';
     TextEditingController nameController = TextEditingController(text: initialName);
 
@@ -542,14 +630,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 피드백 2: Regex, DTO 같은 복잡한 개발 용어 차단 및 안내 문구 배치
                   const Text(
                     "인식된 식재료 정보를 확인해 주세요. 정보가 다르다면 직접 수정할 수 있습니다.",
                     style: TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
                   ),
                   const SizedBox(height: 20),
 
-                  // 1. 식재료 이름 입력 칸
                   const Text(
                     "식재료 이름",
                     style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
@@ -576,7 +662,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // 2. 유통기한 선택 컴포넌트
                   const Text(
                     "유통기한 / 소비기한",
                     style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
@@ -652,7 +737,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     _executeBackendPipeline();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("'$finalName'이(가) 냉장고 재고 목록에 동적 바인딩되었습니다.")),
+                    SnackBar(content: Text("'$finalName'이(가) 냉장고 재고 목록에 추가되었습니다.")),
                   );
                 },
                 style: ElevatedButton.styleFrom(
