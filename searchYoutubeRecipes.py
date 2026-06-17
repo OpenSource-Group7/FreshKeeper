@@ -7,6 +7,64 @@ from models import RecipeTable, IngredientTable, User
 import yt_dlp
 
 
+
+# 요리 이름 추출 메인(전부)
+def recommend_dishes_from_refrigerator(user_id: int, db: Session) -> list[dict]:
+
+    '''
+    # 임시 데이터
+    user_ingredients = [
+    "돼지고기", "대파", "양파", "달걀", "밥", "참치", "식용유",
+    "참기름", "배추김치", "고춧가루", "청양고추", "배추", "스팸",
+    "생수", "소금", "설탕", "간장", "김치", "두부", "식초",
+    "고추장", "멸치", "마늘", "기름", "양념"
+    ];
+    '''
+    
+    # DB에서 해당 유저의 정보 가져오기
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.havingIngredients:
+        return []
+    
+    # 콤마로 저장된 문자열을 리스트로 변환
+    user_ingredients = [
+        ing.strip() for ing in user.havingIngredients.split(",") if ing.strip()
+    ]
+
+    all_recipes = db.query(RecipeTable).all()
+    recommendations = []
+
+    for recipe in all_recipes:
+        recipe_ingredients = [i.strip() for i in recipe.ingredients.split(",") if i.strip()]
+        
+        # DB에 요리 재료가 비어있다면
+        if not recipe_ingredients:
+            continue
+            
+        # 1. 텍스트 포함 여부로 내 재료와 매칭 검사
+        matched = []
+        raw_ingredients_text = recipe.ingredients if recipe.ingredients else ""
+        for my_ing in user_ingredients:
+            if my_ing in raw_ingredients_text:
+                matched.append(my_ing)
+        
+        # 2. 하나라도 매칭된 재료가 있다면 매칭률 계산
+        if matched:
+            match_rate = len(matched) / len(recipe_ingredients)
+
+            recommendations.append({
+                "dish": recipe.dish,
+                "match_rate": min(match_rate, 1.0), 
+                "matched_ingredients": matched
+            })
+            
+    recommendations.sort(key=lambda x: x["match_rate"], reverse=True)
+    return {
+        "recommendations": recommendations[:3],
+        "my_ingredients": user_ingredients
+    }
+
+
 # 유튜브 레시피 검색 메인
 def search_and_process_recipes(dish: str, db: Session) -> dict:
     if not dish:
@@ -86,64 +144,7 @@ def filter_real_ingredients_fast(extracted_nouns: list[str], db: Session) -> lis
     # 리스트로 변환해서 반환
     return list(matched_set)
 
-# 요리 이름 추출 (유저 ID 기반 추천으로 수정)
-def recommend_dishes_from_refrigerator(user_id: int, db: Session) -> list[dict]:
-    # 임시 데이터 사용!!!!!!!!!!!!!!!!!!!!!!!!
-    user_ingredients = [
-    "돼지고기", "대파", "양파", "달걀", "밥", "참치", "식용유",
-    "참기름", "배추김치", "고춧가루", "청양고추", "배추", "스팸",
-    "생수", "소금", "설탕", "간장", "김치", "두부", "식초",
-    "고추장", "멸치", "마늘", "기름", "양념"
-    ];
-    
-    # 머지 하고나면 위에 지우고, 아래 주석 풀기
-    """
-    # DB에서 해당 유저의 정보 가져오기
-    user = db.query(User).filter(User.id == user_id).first()
-    # 유저가 없거나 가진 재료가 아예 비어있다면 빈 리스트 반환
-    if not user or not user.havingIngredients:
-        return []
-    
-    # 콤마로 저장된 문자열을 리스트로 변환
-    user_ingredients = [
-        ing.strip() for ing in user.havingIngredients.split(",") if ing.strip()
-    ]
-    """
 
-    all_recipes = db.query(RecipeTable).all()
-    recommendations = []
-
-    for recipe in all_recipes:
-        # DB에 등록된 요리의 기준 재료들을 분리 (쉼표 기준 파싱)
-        recipe_ingredients = [i.strip() for i in recipe.ingredients.split(",") if i.strip()]
-        
-        # 만약 DB에 요리 재료가 비어있다면 에러 방지를 위해 패스
-        if not recipe_ingredients:
-            continue
-            
-        # 1. 텍스트 포함 여부로 내 재료와 매칭 검사
-        matched = []
-        raw_ingredients_text = recipe.ingredients if recipe.ingredients else ""
-        for my_ing in user_ingredients:
-            if my_ing in raw_ingredients_text:
-                matched.append(my_ing)
-        
-        # 2. 하나라도 매칭된 재료가 있다면 매칭률 계산
-        if matched:
-            # (매칭된 재료 개수) / (이 요리의 총 재료 개수)
-            match_rate = len(matched) / len(recipe_ingredients)
-            
-            recommendations.append({
-                "dish": recipe.dish,
-                "match_rate": min(match_rate, 1.0), 
-                "matched_ingredients": matched
-            })
-            
-    # 매칭률이 높은 순으로 정렬
-    recommendations.sort(key=lambda x: x["match_rate"], reverse=True)
-    
-    # 상위 3개 요리 반환
-    return recommendations[:3]
 
 #유튜브 검색
 def search_youtube_recipes(dish_name: str) -> list[dict]:
