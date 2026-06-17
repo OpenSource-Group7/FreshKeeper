@@ -111,9 +111,9 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  final DateTime _currentDate = DateTime(2026, 05, 21);
+  final DateTime _currentDate = DateTime.now();
 
-  late List<Ingredient> _rawDatabaseItems;
+  List<Ingredient> _rawDatabaseItems = [];
   List<Ingredient> _processedDisplayItems = [];
   String _selectedCategory = '전체';
   bool _isLoading = false;
@@ -126,13 +126,52 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void initState() {
     super.initState();
-    _rawDatabaseItems = [
-      Ingredient(id: 61, name: '당근', expiryDate: DateTime(2026, 05, 22), useByDate: DateTime(2026, 05, 22), quantity: 2, unit: '개', category: '실온', status: 'NORMAL', progress: 0.95),
-      Ingredient(id: 62, name: '서울우유 900ml', expiryDate: DateTime(2026, 04, 09), useByDate: DateTime(2026, 04, 09), quantity: 450, unit: 'ml', category: '냉장', status: 'NORMAL', progress: 0.65),
-      Ingredient(id: 63, name: '양파', expiryDate: DateTime(2026, 06, 04), useByDate: DateTime(2026, 06, 04), quantity: 5, unit: '개', category: '실온', status: 'NORMAL', progress: 0.35),
-      Ingredient(id: 64, name: '브로콜리', expiryDate: DateTime(2026, 06, 15), useByDate: DateTime(2026, 06, 15), quantity: 1, unit: '팩', category: '냉장', status: 'NORMAL', progress: 0.15),
-    ];
-    _executeBackendPipeline();
+    fetchIngredientsFromBackend();
+  }
+
+  Future<void> fetchIngredientsFromBackend() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final url = Uri.parse('http://10.0.2.2:8080/api/ingredients');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        List<dynamic> backendData = jsonDecode(utf8.decode(response.bodyBytes));
+
+        setState(() {
+          _rawDatabaseItems = backendData.map((json) => Ingredient(
+            id: json['id'],
+            name: json['name'] ?? '알 수 없는 식재료',
+            expiryDate: json['expiryDate'] != null ? DateTime.parse(json['expiryDate']) : DateTime.now(),
+            useByDate: json['useByDate'] != null ? DateTime.parse(json['useByDate']) : DateTime.now(),
+            quantity: (json['quantity'] ?? 1).toDouble(),
+            unit: json['unit'] ?? '개',
+            category: json['category'] ?? '냉장',
+            status: json['status'] ?? 'NORMAL',
+            progress: (json['progress'] ?? 0.5).toDouble(),
+          )).toList();
+        });
+
+        _executeBackendPipeline();
+      } else {
+        throw Exception("서버 응답 에러: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("네온 DB 데이터 연동 실패 로그: $e");
+      setState(() {
+        _rawDatabaseItems = [
+          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 1, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
+        ];
+        _executeBackendPipeline();
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _executeBackendPipeline() {
@@ -322,125 +361,128 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF0E6E20)))
-          : Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-            Row(
-              children: ['전체', '냉장', '냉동', '실온'].map((cat) => _buildCategoryChip(cat)).toList(),
-            ),
-            const SizedBox(height: 20),
+          : RefreshIndicator(
+        onRefresh: fetchIngredientsFromBackend,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              Row(
+                children: ['전체', '냉장', '냉동', '실온'].map((cat) => _buildCategoryChip(cat)).toList(),
+              ),
+              const SizedBox(height: 20),
 
-            Expanded(
-              child: displayItems.isEmpty
-                  ? const Center(child: Text("보유 중인 식재료가 없습니다.", style: TextStyle(color: Color(0xFF40493D))))
-                  : ListView.builder(
-                itemCount: displayItems.length,
-                itemBuilder: (context, index) {
-                  final item = displayItems[index];
-                  final remainingDays = item.useByDate.difference(_currentDate).inDays;
-                  final statusColor = _getStatusColor(item.status);
+              Expanded(
+                child: displayItems.isEmpty
+                    ? const Center(child: Text("보유 중인 식재료가 없습니다.", style: TextStyle(color: Color(0xFF40493D))))
+                    : ListView.builder(
+                  itemCount: displayItems.length,
+                  itemBuilder: (context, index) {
+                    final item = displayItems[index];
+                    final remainingDays = item.useByDate.difference(_currentDate).inDays;
+                    final statusColor = _getStatusColor(item.status);
 
-                  return Card(
-                    color: const Color(0xFFFFFFFF),
-                    elevation: 0,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: Color(0xFFE1E3E4), width: 1),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF3F4F5),
-                                  borderRadius: BorderRadius.circular(8),
+                    return Card(
+                      color: const Color(0xFFFFFFFF),
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Color(0xFFE1E3E4), width: 1),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    _getIngredientIcon(item.name),
+                                    color: statusColor.withOpacity(0.7),
+                                    size: 30,
+                                  ),
                                 ),
-                                child: Icon(
-                                  _getIngredientIcon(item.name),
-                                  color: statusColor.withOpacity(0.7),
-                                  size: 30,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
+                                const SizedBox(width: 16),
 
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          item.name,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF191C1D)),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: statusColor.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(20),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            item.name,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF191C1D)),
                                           ),
-                                          child: Text(
-                                            remainingDays >= 0 ? 'D-$remainingDays' : 'D+${remainingDays.abs()}',
-                                            style: TextStyle(
-                                              color: statusColor,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              remainingDays >= 0 ? 'D-$remainingDays' : 'D+${remainingDays.abs()}',
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity}${item.unit} 남음',
-                                      style: const TextStyle(color: Color(0xFF707A6C), fontSize: 14, fontWeight: FontWeight.w500),
-                                    ),
-                                  ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity}${item.unit} 남음',
+                                        style: const TextStyle(color: Color(0xFF707A6C), fontSize: 14, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${item.useByDate.year}.${item.useByDate.month.toString().padLeft(2, '0')}.${item.useByDate.day.toString().padLeft(2, '0')}',
-                                style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: item.progress,
-                              minHeight: 6,
-                              backgroundColor: const Color(0xFFEDEEEF),
-                              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                              ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '${item.useByDate.year}.${item.useByDate.month.toString().padLeft(2, '0')}.${item.useByDate.day.toString().padLeft(2, '0')}',
+                                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: item.progress,
+                                minHeight: 6,
+                                backgroundColor: const Color(0xFFEDEEEF),
+                                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -475,7 +517,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   void _showOcrSimulationDialog() {
-    DateTime selectedUserDate = DateTime(2026, 05, 28);
+    DateTime selectedUserDate = DateTime.now(); 
+
+    // 유공기한 파싱 데이터 기반 초깃값 세팅 및 사용자 수동 수정을 위한 텍스트 창 변수
+    String initialName = _lastDetectedNames.isNotEmpty ? _lastDetectedNames.first : '';
+    TextEditingController nameController = TextEditingController(text: initialName);
 
     showDialog(
       context: context,
@@ -483,35 +529,61 @@ class _InventoryScreenState extends State<InventoryScreen> {
         builder: (context, setDialogState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text("🧾 OCR 정제 & 사용자 UX 검증", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF191C1D))),
+            backgroundColor: const Color(0xFFFFFFFF),
+            title: const Row(
+              children: [
+                Icon(Icons.kitchen, color: Color(0xFF0E6E20)),
+                SizedBox(width: 10),
+                Text("식재료 추가 확인", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF191C1D))),
+              ],
+            ),
             content: SingleChildScrollView(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("[1] 유입된 비정형 영수증 텍스트", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFB51925), fontSize: 13)),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    color: const Color(0xFFF3F4F5),
-                    child: Text(
-                      _realRawReceiptText,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Color(0xFF191C1D)),
+                  // 피드백 2: Regex, DTO 같은 복잡한 개발 용어 차단 및 안내 문구 배치
+                  const Text(
+                    "인식된 식재료 정보를 확인해 주세요. 정보가 다르다면 직접 수정할 수 있습니다.",
+                    style: TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 1. 식재료 이름 입력 칸
+                  const Text(
+                    "식재료 이름",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      hintText: "예: 우유, 마늘, 양파",
+                      hintStyle: const TextStyle(color: Color(0xFF9EA49A), fontSize: 14),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      filled: true,
+                      fillColor: const Color(0xFFF3F4F5),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE1E3E4)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFF0E6E20), width: 1.5),
+                      ),
                     ),
+                    style: const TextStyle(fontSize: 15, color: Color(0xFF191C1D)),
                   ),
-                  const SizedBox(height: 12),
-                  const Text("[2] 백엔드 Regex 품목명 정제 결과", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0E6E20), fontSize: 13)),
-                  Text(
-                    _lastDetectedNames.isEmpty
-                        ? "• 서버에서 필터링 완료된 식재료 품목이 없습니다."
-                        : _lastDetectedNames.map((name) => "• 품목명 추출 완료 -> $name").join('\n'),
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF40493D)),
+                  const SizedBox(height: 20),
+
+                  // 2. 유통기한 선택 컴포넌트
+                  const Text(
+                    "유통기한 / 소비기한",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
                   ),
-                  const SizedBox(height: 12),
-                  const Text("[3] 유통기한 수동 입력", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  OutlinedButton.icon(
-                    onPressed: () async {
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
                       final DateTime? picked = await showDatePicker(
                         context: context,
                         initialDate: selectedUserDate,
@@ -524,26 +596,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         });
                       }
                     },
-                    icon: const Icon(Icons.calendar_month, size: 18),
-                    label: Text(
-                      "${selectedUserDate.year}-${selectedUserDate.month.toString().padLeft(2, '0')}-${selectedUserDate.day.toString().padLeft(2, '0')}",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0E6E20),
-                      side: const BorderSide(color: Color(0xFF0E6E20)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text("[4] 스프링 부트 DTO 최종 구조화 바인딩", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8B5000), fontSize: 13)),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    color: const Color(0xFFFFDCBE).withOpacity(0.3),
-                    child: Text(
-                      "IngredientRequestDto {\n  품목명: '${_lastDetectedNames.isNotEmpty ? _lastDetectedNames.first : '없음'}',\n  유저입력날짜: '${selectedUserDate.year}-${selectedUserDate.month.toString().padLeft(2, '0')}-${selectedUserDate.day.toString().padLeft(2, '0')}'\n}",
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Color(0xFF542E00)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE1E3E4)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "${selectedUserDate.year}년 ${selectedUserDate.month.toString().padLeft(2, '0')}월 ${selectedUserDate.day.toString().padLeft(2, '0')}일",
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF191C1D)),
+                          ),
+                          const Icon(Icons.calendar_month, color: Color(0xFF0E6E20)),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -552,35 +621,44 @@ class _InventoryScreenState extends State<InventoryScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text("취소", style: TextStyle(color: Color(0xFF707A6C))),
+                child: const Text("취소", style: TextStyle(color: Color(0xFF707A6C), fontWeight: FontWeight.bold)),
               ),
               ElevatedButton(
                 onPressed: () {
+                  final String finalName = nameController.text.trim();
+
+                  if (finalName.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("식재료 이름을 입력해 주세요!")),
+                    );
+                    return;
+                  }
+
                   Navigator.pop(context);
                   setState(() {
-                    int currentId = 80;
-                    for (String itemName in _lastDetectedNames) {
-                      _rawDatabaseItems.add(
-                        Ingredient(
-                          id: currentId++,
-                          name: itemName,
-                          expiryDate: selectedUserDate,
-                          useByDate: selectedUserDate,
-                          quantity: itemName.contains('우유') ? 900 : 1,
-                          unit: itemName.contains('우유') ? 'ml' : '개',
-                          category: '냉장',
-                          status: 'NORMAL',
-                          progress: 0.5,
-                        ),
-                      );
-                    }
+                    _rawDatabaseItems.add(
+                      Ingredient(
+                        id: DateTime.now().millisecondsSinceEpoch,
+                        name: finalName,
+                        expiryDate: selectedUserDate,
+                        useByDate: selectedUserDate,
+                        quantity: finalName.contains('우유') ? 900 : 1,
+                        unit: finalName.contains('우유') ? 'ml' : '개',
+                        category: '냉장',
+                        status: 'NORMAL',
+                        progress: 0.5,
+                      ),
+                    );
                     _executeBackendPipeline();
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${_lastDetectedNames.length}개의 식재료가 실제 재고 목록에 동적 바인딩되었습니다.")),
+                    SnackBar(content: Text("'$finalName'이(가) 냉장고 재고 목록에 동적 바인딩되었습니다.")),
                   );
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0E6E20)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0E6E20),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
                 child: const Text("냉장고 반영", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               )
             ],
