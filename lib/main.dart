@@ -126,7 +126,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   void initState() {
     super.initState();
-    fetchIngredientsFromBackend();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      fetchIngredientsFromBackend();
+    });
   }
 
   Future<void> fetchIngredientsFromBackend() async {
@@ -163,7 +165,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       print("네온 DB 데이터 연동 실패 로그: $e");
       setState(() {
         _rawDatabaseItems = [
-          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 5, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
+          Ingredient(id: 61, name: '당근', expiryDate: DateTime(2026, 06, 20), useByDate: DateTime(2026, 06, 25), quantity: 2, unit: '개', category: '실온', status: 'NORMAL', progress: 0.8),
+          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 1, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
         ];
         _executeBackendPipeline();
       });
@@ -180,12 +183,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
       final response = await http.delete(url);
 
       if (response.statusCode == 200 || response.statusCode == 204) {
-        print("네온 DB에서 식재료 ID $id 삭제 완료");
         return true;
       }
       return false;
     } catch (e) {
-      print("서버 오프라인 상태 - 로컬 메모리 삭제 모드로 가동: $e");
+      print("서버 오프라인 상태 - 로컬 메모리 삭제 진행: $e");
       return true;
     }
   }
@@ -319,6 +321,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         setState(() {
           if (responseData is Map) {
             _realRawReceiptText = responseData['rawText'] ?? "추출된 영수증 텍스트 본문이 비어있습니다.";
+            _selectedCategory = '전체';
             _lastDetectedNames = List<String>.from(responseData['detectedItems'] ?? []);
           } else if (responseData is List) {
             _realRawReceiptText = "스캔 완료 파일명: ${pickedFile!.name}\n\n[백엔드 최종 인식 품목]\n${responseData.join(', ')}";
@@ -334,17 +337,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     } catch (e) {
       setState(() {
         final String fileName = pickedFile != null ? pickedFile.name : "알 수 없는 파일";
-
-        _realRawReceiptText = "[백엔드 스프링부트 서버 연결 실패]\n\n"
-            "이클립스 자바 백엔드 서버가 구동 중인지 확인해 주세요!\n"
-            "방금 가상 카메라로 촬영한 리얼 정보는 다음과 같습니다.\n\n"
-            "• 촬영한 파일명: $fileName\n"
-            "• 에러 로그 상세 정보: $e";
-
-        _lastDetectedNames = [];
-        if (fileName.contains('receipt') || fileName.contains('png') || fileName.contains('jpg')) {
-          _lastDetectedNames.add('신선우유');
-        }
+        _realRawReceiptText = "[백엔드 스프링부트 서버 연결 실패]\n\n이클립스 자바 백엔드 서버 구동을 확인해 주세요!";
+        _lastDetectedNames = ['우유', '양파', '대파'];
       });
 
       _showOcrSimulationDialog();
@@ -353,6 +347,181 @@ class _InventoryScreenState extends State<InventoryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _showOcrSimulationDialog() {
+    // 1. 각 품목 이름 제어용 컨트롤러 리스트
+    List<TextEditingController> controllers = _lastDetectedNames
+        .map((name) => TextEditingController(text: name))
+        .toList();
+
+    List<DateTime> itemDates = List<DateTime>.generate(
+      _lastDetectedNames.length,
+          (_) => DateTime.now(), // 초기값은 전부 오늘 날짜로 세팅
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            backgroundColor: const Color(0xFFFFFFFF),
+            title: const Row(
+              children: [
+                Icon(Icons.receipt_long, color: Color(0xFF0E6E20)),
+                SizedBox(width: 10),
+                Text("스캔 품목별 정보 확인", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF191C1D))),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "각 식재료의 이름과 알맞은 유통기한을 각각 설정해 주세요.",
+                      style: TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 3. 리스트 뷰를 통해 아이템별로 입력칸 + 각자 달력 버튼 배치 구조 구현
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: controllers.length,
+                      itemBuilder: (context, i) {
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FA),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFEDEEEF)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "품목 [${i + 1}]",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0E6E20)),
+                              ),
+                              const SizedBox(height: 6),
+                              // 이름 수정 텍스트창
+                              TextField(
+                                controller: controllers[i],
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  filled: true,
+                                  fillColor: const Color(0xFFFFFFFF),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFE1E3E4)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFF0E6E20), width: 1.5),
+                                  ),
+                                ),
+                                style: const TextStyle(fontSize: 14, color: Color(0xFF191C1D)),
+                              ),
+                              const SizedBox(height: 10),
+
+                              InkWell(
+                                onTap: () async {
+                                  final DateTime? picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: itemDates[i], // 해당 순번 품목의 기존 지정 날짜 로딩
+                                    firstDate: DateTime(2026, 01, 01),
+                                    lastDate: DateTime(2027, 12, 31),
+                                  );
+                                  if (picked != null && picked != itemDates[i]) {
+                                    setDialogState(() {
+                                      itemDates[i] = picked;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFFFFF),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFE1E3E4)),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "유통기한: ${itemDates[i].year}-${itemDates[i].month.toString().padLeft(2, '0')}-${itemDates[i].day.toString().padLeft(2, '0')}",
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF40493D)),
+                                      ),
+                                      const Icon(Icons.calendar_month, color: Color(0xFF0E6E20), size: 18),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("취소", style: TextStyle(color: Color(0xFF707A6C), fontWeight: FontWeight.bold)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  List<String> finalSavedNames = [];
+
+                  setState(() {
+                    int tempId = DateTime.now().millisecondsSinceEpoch;
+                    for (int i = 0; i < controllers.length; i++) {
+                      String name = controllers[i].text.trim();
+                      if (name.isNotEmpty) {
+                        finalSavedNames.add(name);
+
+                        _rawDatabaseItems.add(
+                          Ingredient(
+                            id: tempId++,
+                            name: name,
+                            expiryDate: itemDates[i], // 개별 지정 유통기한 삽입
+                            useByDate: itemDates[i],
+                            quantity: name.contains('우유') ? 900 : 1,
+                            unit: name.contains('우유') ? 'ml' : '개',
+                            category: name.contains('당근') || name.contains('양파') || name.contains('대파') ? '실온' : '냉장',
+                            status: 'NORMAL',
+                            progress: 0.6,
+                          ),
+                        );
+                      }
+                    }
+                    _executeBackendPipeline();
+                  });
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("${finalSavedNames.length}개의 식재료가 각기 다른 유통기한으로 냉장고에 등록되었습니다! 🥦✨")),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0E6E20),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text("냉장고 반영", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              )
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -378,7 +547,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF0E6E20)))
           : RefreshIndicator(
-        onRefresh: fetchIngredientsFromBackend,
+        onRefresh: () async {
+          await fetchIngredientsFromBackend();
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
@@ -426,7 +597,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         );
                       },
                       onDismissed: (direction) async {
-                        final int originalIndex = _rawDatabaseItems.indexOf(item);
+                        final int originalIndex = _rawDatabaseItems.indexWhere((element) => element.id == item.id);
                         final Ingredient deletedItem = item;
 
                         setState(() {
@@ -446,7 +617,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               textColor: const Color(0xFF5CB35C),
                               onPressed: () {
                                 setState(() {
-                                  _rawDatabaseItems.insert(originalIndex, deletedItem);
+                                  if (originalIndex != -1 && originalIndex <= _rawDatabaseItems.length) {
+                                    _rawDatabaseItems.insert(originalIndex, deletedItem);
+                                  } else {
+                                    _rawDatabaseItems.add(deletedItem);
+                                  }
                                   _executeBackendPipeline();
                                 });
                               },
@@ -601,154 +776,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
         labelStyle: TextStyle(color: isSelected ? Colors.white : const Color(0xFF191C1D), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 13),
         side: BorderSide(color: isSelected ? Colors.transparent : const Color(0xFFE1E3E4)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-    );
-  }
-
-  void _showOcrSimulationDialog() {
-    DateTime selectedUserDate = DateTime.now();
-
-    String initialName = _lastDetectedNames.isNotEmpty ? _lastDetectedNames.first : '';
-    TextEditingController nameController = TextEditingController(text: initialName);
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            backgroundColor: const Color(0xFFFFFFFF),
-            title: const Row(
-              children: [
-                Icon(Icons.kitchen, color: Color(0xFF0E6E20)),
-                SizedBox(width: 10),
-                Text("식재료 추가 확인", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF191C1D))),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "인식된 식재료 정보를 확인해 주세요. 정보가 다르다면 직접 수정할 수 있습니다.",
-                    style: TextStyle(fontSize: 13, color: Color(0xFF707A6C), height: 1.4),
-                  ),
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    "식재료 이름",
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: nameController,
-                    decoration: InputDecoration(
-                      hintText: "예: 우유, 마늘, 양파",
-                      hintStyle: const TextStyle(color: Color(0xFF9EA49A), fontSize: 14),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      filled: true,
-                      fillColor: const Color(0xFFF3F4F5),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFFE1E3E4)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Color(0xFF0E6E20), width: 1.5),
-                      ),
-                    ),
-                    style: const TextStyle(fontSize: 15, color: Color(0xFF191C1D)),
-                  ),
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    "유통기한 / 소비기한",
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF191C1D), fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedUserDate,
-                        firstDate: DateTime(2026, 01, 01),
-                        lastDate: DateTime(2027, 12, 31),
-                      );
-                      if (picked != null && picked != selectedUserDate) {
-                        setDialogState(() {
-                          selectedUserDate = picked;
-                        });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F5),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFE1E3E4)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "${selectedUserDate.year}년 ${selectedUserDate.month.toString().padLeft(2, '0')}월 ${selectedUserDate.day.toString().padLeft(2, '0')}일",
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF191C1D)),
-                          ),
-                          const Icon(Icons.calendar_month, color: Color(0xFF0E6E20)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("취소", style: TextStyle(color: Color(0xFF707A6C), fontWeight: FontWeight.bold)),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final String finalName = nameController.text.trim();
-
-                  if (finalName.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("식재료 이름을 입력해 주세요!")),
-                    );
-                    return;
-                  }
-
-                  Navigator.pop(context);
-                  setState(() {
-                    _rawDatabaseItems.add(
-                      Ingredient(
-                        id: DateTime.now().millisecondsSinceEpoch,
-                        name: finalName,
-                        expiryDate: selectedUserDate,
-                        useByDate: selectedUserDate,
-                        quantity: finalName.contains('우유') ? 900 : 1,
-                        unit: finalName.contains('우유') ? 'ml' : '개',
-                        category: '냉장',
-                        status: 'NORMAL',
-                        progress: 0.5,
-                      ),
-                    );
-                    _executeBackendPipeline();
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("'$finalName'이(가) 냉장고 재고 목록에 추가되었습니다.")),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0E6E20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text("냉장고 반영", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              )
-            ],
-          );
-        },
       ),
     );
   }
