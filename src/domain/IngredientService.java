@@ -19,12 +19,13 @@ public class IngredientService {
      * 등록하기 전에 식약처 Open API로 소비기한을 자동 계산하고 상태를 판단해 저장합니다.
      */
     public Ingredient register(Ingredient ingredient) {
-
+        // 가은이가 만든 식약처 Open API 실시간 계산기 가동!
         LocalDate computedUseByDate = foodSafetyApiService.calculateUseByDate(
             ingredient.getName(), 
             ingredient.getExpirationDate()
         );
         
+        // 엔티티 내부의 소비기한 세터(Setter) 메서드를 호출해 값을 저장
         ingredient.setUseByDate(computedUseByDate);
 
         // 유통기한 상태 자동 업데이트 로직 실행
@@ -58,7 +59,7 @@ public class IngredientService {
     }
 
     /**
-     *유통기한 남은 날짜를 계산해 상태(status)를 자동으로 정해주는 메서드
+     * [핵심 로직] 유통기한 남은 날짜를 계산해 상태(status)를 자동으로 정해주는 메서드
      */
     private void updateIngredientStatus(Ingredient ingredient) {
         if (ingredient.getExpirationDate() == null) {
