@@ -9,12 +9,15 @@ import youtube_transcript_api
 from kiwipiepy import Kiwi
 import pandas as pd
 
+import os
+from dotenv import load_dotenv
+
 
 class RecipeExtractor:
     def __init__(self, api_key: str = "sample"):
         self.kiwi = Kiwi(num_workers=-1)
         self.yt_api = youtube_transcript_api.YouTubeTranscriptApi()
-        self.api_key = "ab19a9e4fe58eaff6d06a4b96f05c01dee2417c8f971d0443f75c409d425ff44"
+        self.api_key = os.environ.get("API_KEY")
 
         self.base_url = (
             f"http://211.237.50.150:7080/openapi/{self.api_key}"
@@ -185,4 +188,33 @@ class RecipeExtractor:
         # 딕셔너리로 반환
         return df.to_dict("records")
 
+if __name__ == "__main__":
+    async def main():
+        load_dotenv()
+        extractor = RecipeExtractor()
+        await extractor.load_whitelist()
+
+        url = input("유튜브 URL을 입력하세요: ").strip()
+        if not url:
+            print("URL이 입력되지 않았습니다.")
+            return
+
+        print("\n자막 추출 중...")
+        text = extractor.extract_recipe(url)
+
+        if not text:
+            print("자막을 가져오지 못했습니다.")
+            return
+
+        print("\n재료 추출 중...")
+        data = await extractor.extract_data(text)
+
+        print("\n=== 추출된 재료 목록 ===")
+        if not data:
+            print("추출된 재료가 없습니다.")
+        else:
+            for item in data:
+                print(f"재료: {item['재료']:<10} 수량: {item['수량']} {item['단위']}")
+
+    asyncio.run(main())
 
