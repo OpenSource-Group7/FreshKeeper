@@ -165,7 +165,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       print("네온 DB 데이터 연동 실패 로그: $e");
       setState(() {
         _rawDatabaseItems = [
-          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 07, 22), quantity: 5, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
+          Ingredient(id: 999, name: '마늘', expiryDate: DateTime(2026, 06, 16), useByDate: DateTime(2026, 06, 30), quantity: 5, unit: '개', category: '냉장', status: 'NORMAL', progress: 0.5),
         ];
         _executeBackendPipeline();
       });
