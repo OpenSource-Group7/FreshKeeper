@@ -18,11 +18,9 @@ import org.json.JSONObject;
 
 public class ClovaOcrService {
 
-    // 네이버 클로바 OCR API 정보
     private final String apiURL = "https://i6bnj5nnu2.apigw.ntruss.com/custom/v1/54183/a33b6327cf6ca2e4797577cefcda5aae35bc67ed11072e03630b8e6c1f16323e/general";
     private final String secretKey = "RXV1cFdVZmlLWGlyZmFOZ2FNall2V3NhQ1lnV3htWlY=";
 
-    // 다경이가 공유해 준 Neon PostgreSQL 클라우드 DB 연결 정보
     private final String dbUrl = "jdbc:postgresql://ep-nameless-dust-aomikbfl-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require";
     private final String dbUser = "neondb_owner";
     private final String dbPassword = "npg_YC6gH8NinfZM"; 
@@ -113,7 +111,6 @@ public class ClovaOcrService {
                 return ingredientNames;
             }
 
-            // 마트 정보, 결제용 노이즈 텍스트 차단 리스트
             List<String> noiseWords = List.of(
                 "과세", "면세", "합계", "금액", "부가세", "포인트", "할인", "결제", 
                 "카드", "현금", "수량", "단가", "이마트", "홈플러스", "롯데마트", "매장"
@@ -125,17 +122,14 @@ public class ClovaOcrService {
                 for (int i = 0; i < fields.length(); i++) {
                     String inferText = fields.getJSONObject(i).getString("inferText").trim();
                     
-                    // 1. 숫자가 포함된 텍스트는 단가/금액/사업자번호이므로 제외
                     if (inferText.matches(".*\\d.*")) {
                         continue;
                     }
 
-                    // 2. 특수문자나 단독 영문자 노이즈 제거
                     if (inferText.matches("^[\\W_]+$") || inferText.length() < 2) {
                         continue;
                     }
 
-                    // 3. 결제 관련 노이즈 단어가 포함되어 있다면 제외
                     boolean isNoise = false;
                     for (String noise : noiseWords) {
                         if (inferText.contains(noise)) {
@@ -144,7 +138,6 @@ public class ClovaOcrService {
                         }
                     }
 
-                    // 4. 모든 필터를 무사히 통과한 진짜 식재료/음식 품목만 추가
                     if (!isNoise) {
                         ingredientNames.add(inferText);
                     }
@@ -163,9 +156,8 @@ public class ClovaOcrService {
         return ingredientNames;
     }
 
-    // JDBC를 사용하여 Neon DB에 데이터를 적재하는 프라이빗 헬퍼 함수
     private void saveIngredientsToNeonDatabase(List<String> ingredients) {
-        String sql = "INSERT INTO ingredients (name, category, qty, reg_date) VALUES (?, '냉장', 1, CURRENT_DATE)";
+        String sql = "INSERT INTO ingredients (name, category, quantity, unit, expiry_date, use_by_date, status, progress) VALUES (?, '냉장', 1, '개', CURRENT_DATE, CURRENT_DATE + 7, 'NORMAL', 0.6)";
         
         try {
             Class.forName("org.postgresql.Driver");
