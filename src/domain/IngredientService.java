@@ -7,17 +7,26 @@ import java.util.List;
 public class IngredientService {
 
     private final IngredientRepository ingredientRepository;
+    private final FoodSafetyApiService foodSafetyApiService;
 
-    // 생성자를 통해 저장소(Repository)를 주입받음
-    public IngredientService(IngredientRepository ingredientRepository) {
+    public IngredientService(IngredientRepository ingredientRepository, FoodSafetyApiService foodSafetyApiService) {
         this.ingredientRepository = ingredientRepository;
+        this.foodSafetyApiService = foodSafetyApiService;
     }
 
     /**
      * 1. 식재료 등록하기
-     * 등록하기 전에 유통기한을 체크해서 상태(status)를 자동으로 판단해 저장합니다.
+     * 등록하기 전에 식약처 Open API로 소비기한을 자동 계산하고 상태를 판단해 저장합니다.
      */
     public Ingredient register(Ingredient ingredient) {
+
+        LocalDate computedUseByDate = foodSafetyApiService.calculateUseByDate(
+            ingredient.getName(), 
+            ingredient.getExpirationDate()
+        );
+        
+        ingredient.setUseByDate(computedUseByDate);
+
         // 유통기한 상태 자동 업데이트 로직 실행
         updateIngredientStatus(ingredient);
         return ingredientRepository.save(ingredient);
@@ -28,7 +37,6 @@ public class IngredientService {
      */
     public List<Ingredient> getAllIngredients() {
         List<Ingredient> ingredients = ingredientRepository.findAll();
-        // 혹시 날짜가 지났을 수 있으니 전체 조회할 때 상태를 한 번 더 최신화해줌
         for (Ingredient ingredient : ingredients) {
             updateIngredientStatus(ingredient);
         }
@@ -50,7 +58,7 @@ public class IngredientService {
     }
 
     /**
-     * [핵심 로직] 유통기한 남은 날짜를 계산해 상태(status)를 자동으로 정해주는 메서드
+     *유통기한 남은 날짜를 계산해 상태(status)를 자동으로 정해주는 메서드
      */
     private void updateIngredientStatus(Ingredient ingredient) {
         if (ingredient.getExpirationDate() == null) {
@@ -59,15 +67,14 @@ public class IngredientService {
         }
 
         LocalDate today = LocalDate.now();
-        // 유통기한과 오늘 날짜의 차이 계산 (남은 일수)
         long daysLeft = ChronoUnit.DAYS.between(today, ingredient.getExpirationDate());
 
         if (daysLeft < 0 || ingredient.getQuantity() <= 0) {
-            ingredient.setStatus("소진"); // 유통기한이 지났거나 수량이 0 이하일 때
+            ingredient.setStatus("소진");
         } else if (daysLeft <= 3) {
-            ingredient.setStatus("임박"); // 유통기한이 3일 이하로 남았을 때
+            ingredient.setStatus("임박");
         } else {
-            ingredient.setStatus("충분"); // 유통기한이 4일 이상 넉넉히 남았을 때
+            ingredient.setStatus("충분");
         }
     }
 }
