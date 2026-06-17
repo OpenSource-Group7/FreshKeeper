@@ -22,13 +22,16 @@ class _RecipeRecommendScreenState extends State<RecipeRecommendScreen> {
   bool isYoutubeLoading = false;
 
   // 사용자가 가진 재료
-  // 현재 임시 데이터!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  /*
   List<String> myIngredients = [
     "돼지고기", "대파", "양파", "달걀", "밥", "참치", "식용유",
     "참기름", "배추김치", "고춧가루", "청양고추", "배추", "스팸",
     "생수", "소금", "설탕", "간장", "김치", "두부", "식초",
     "고추장", "멸치", "마늘", "기름", "양념"
   ];
+  */
+  List<String> myIngredients = [];
+
 
   // 1. 백엔드 냉장고 추천 API 호출 (@app.get("/recommend-recipe"))
   void _fetchRecommendations() async {
@@ -37,12 +40,25 @@ class _RecipeRecommendScreenState extends State<RecipeRecommendScreen> {
       isRecommendPressed = true;
       _selectedDish = null; // 새로운 추천을 받으면 기존 유튜브 선택 결과 초기화
       youtubeResults = [];
+      myIngredients = []; // 기존 재료 초기화
     });
 
-    List<dynamic> results = await _apiService.recommendRecipes();
+    Map<String, dynamic>? results = await _apiService.recommendRecipes();
 
     setState(() {
-      recommendations = results;
+      if (results != null) {
+        recommendations = results["recommendations"] ?? [];
+
+        // 🌟 [수정 완료] 받아온 dynamic 리스트를 List<String> 형태로 안전하게 형변환합니다.
+        if (results["my_ingredients"] != null) {
+          myIngredients = List<String>.from(results["my_ingredients"]);
+        } else {
+          myIngredients = [];
+        }
+      } else {
+        recommendations = [];
+        myIngredients = [];
+      }
       isRecommendLoading = false;
     });
   }

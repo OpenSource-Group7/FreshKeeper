@@ -67,7 +67,7 @@ class ApiService {
   }
 
   // 4. 재료 기반 요리 추천
-  Future<List<dynamic>> recommendRecipes() async {
+  Future<Map<String, dynamic>?> recommendRecipes() async {
     try {
       final response = await _dio.get(
         "$baseUrl/recommend-recipe",
@@ -78,12 +78,12 @@ class ApiService {
         ),
       );
       if (response.statusCode == 200) {
-        return response.data["recommendations"] ?? [];
+        return response.data["recommendations"] as Map<String, dynamic>?;
       }
-      return [];
+      return null;
     } catch (e) {
-      print("냉장고 추천 레시피 에러: $e");
-      return [];
+      print("재료 기반 요리 추천 에러: $e");
+      return null;
     }
   }
 }
