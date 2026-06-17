@@ -60,23 +60,3 @@ class InventoryManager:
         except Exception as e:
             print(f"에러 발생: {e}")
             return None
-
-def main():
-    print("=" * 50)
-    print("Neon DB 재고 조회 테스트")
-    print("=" * 50)
-
-    manager = InventoryManager()
-
-    print("\n[1] DB 연결 및 재고 데이터 조회 중...")
-    inventory = manager.get_inventory()
-
-    if inventory is not None:
-        print("\n[2] 조회 성공 ")
-        print(f"    총 재료 종류: {len(inventory)}개\n")
-        print(inventory.to_string(index=False))
-    else:
-        print("\n[2] 조회 실패  - 에러 로그를 확인하세요.")
-
-if __name__ == "__main__":
-    main()
