@@ -9,12 +9,15 @@ import youtube_transcript_api
 from kiwipiepy import Kiwi
 import pandas as pd
 
+import os
+from dotenv import load_dotenv
+
 
 class RecipeExtractor:
     def __init__(self, api_key: str = "sample"):
         self.kiwi = Kiwi(num_workers=-1)
         self.yt_api = youtube_transcript_api.YouTubeTranscriptApi()
-        self.api_key = "ab19a9e4fe58eaff6d06a4b96f05c01dee2417c8f971d0443f75c409d425ff44"
+        self.api_key = os.environ.get("API_KEY")
 
         self.base_url = (
             f"http://211.237.50.150:7080/openapi/{self.api_key}"
