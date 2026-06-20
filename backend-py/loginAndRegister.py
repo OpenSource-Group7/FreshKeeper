@@ -84,16 +84,3 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     if user is None:
         raise HTTPException(status_code=401, detail="존재하지 않는 유저입니다.")
     return user
-
-def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> int:
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("user_id")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-        return user_id
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다.")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")

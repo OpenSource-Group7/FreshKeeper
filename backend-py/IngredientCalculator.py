@@ -61,12 +61,6 @@ class IngredientCalculator:
         return comparison[comparison["구매필요량"] > 0][["재료명", "구매필요량", "단위"]]
 
     def _normalize_units(self, df: pd.DataFrame, qty_col: str, extractor: RecipeExtractor) -> pd.DataFrame:
-        target_col = "필요량" if qty_col == "수량" else "총재고"
-
-        # [수정] 빈 DataFrame이면 컬럼이 사라지기 전에 바로 빈 결과 반환
-        if df.empty:
-            return pd.DataFrame(columns=["재료명", target_col, "단위"])
-
         normalized_rows = []
         name_key = "재료" if "재료" in df.columns else "재료명"
 
@@ -95,4 +89,4 @@ class IngredientCalculator:
             )
 
         res_df = pd.DataFrame(normalized_rows)
-        return res_df.rename(columns={"수량": target_col})
+        return res_df.rename(columns={"수량": "필요량" if qty_col == "수량" else "총재고"})
